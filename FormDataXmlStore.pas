@@ -47,7 +47,9 @@ Example of usage:
     else
       TMemo(Control).Lines.Text := VarToStr(Node.ChildNodes['Lines'].NodeValue);
   end;
-}
+
+21-Aug-2018 initial release
+23-Aug-2018 changed load order to Custom, Required, Optional }
 
 interface
 
@@ -68,11 +70,9 @@ type
 
     function AddNode(Control: TControl; ParentNode: IXMLNode): IXMLNode;
     procedure ClearXml;
-    function GetPropertyCustomIndex(Control: TControl; aProperty: String): Integer;
     function GetPropertyIndex(Control: TControl; aProperty: String; List: TStringList): Integer;
     function GetPropertyName(Control: TControl; aProperty: String): String;
     function HasAnyProperty(Control: TControl): Boolean;
-    function IsPropertyAllowed(Control: TControl; aProperty: String): Boolean;
     procedure LoadControl(Control: TControl; Node: IXMLNode);
     procedure SaveControl(Control: TControl; ParentNode: IXMLNode);
     function SaveProperty(Control: TControl; aProperty: String; node: IXMLNode): Boolean;
@@ -155,11 +155,6 @@ begin
   CustomProperties.Free;
 
   inherited;
-end;
-
-function TFormDataXmlStore.GetPropertyCustomIndex(Control: TControl; aProperty: String): Integer;
-begin
-  Result := GetPropertyIndex(Control, aProperty, CustomProperties);
 end;
 
 function TFormDataXmlStore.GetPropertyIndex(Control: TControl; aProperty: String; List: TStringList): Integer;
@@ -265,13 +260,6 @@ begin
   end;
 end;
 
-function TFormDataXmlStore.IsPropertyAllowed(Control: TControl; aProperty: String): Boolean;
-begin
-  Result := GetPropertyIndex(Control, aProperty, RequiredProperties) > -1;
-  if not Result then
-    Result := GetPropertyIndex(Control, aProperty, OptionalProperties) > -1;
-end;
-
 procedure TFormDataXmlStore.Load(FileName: String);
 begin
   xml.LoadFromFile(FileName);
@@ -292,14 +280,23 @@ begin
 
     if (Attribute <> 'Name') and IsPublishedProp(Control, Attribute) then
     begin
-      if IsPropertyAllowed(Control, Attribute) then
-        SetPropValue(Control, Attribute, VarToStr(Node.AttributeNodes[iAttribute].NodeValue))
-      else
+      iProperty := GetPropertyIndex(Control, Attribute, CustomProperties);
+      if iProperty > -1 then
       begin
-        iProperty := GetPropertyCustomIndex(Control, Attribute);
-        if iProperty > -1 then
-          TFormDataXmlStorePropProc(CustomProperties.Objects[iProperty])(Control, Node, apcLoad);
+        TFormDataXmlStorePropProc(CustomProperties.Objects[iProperty])(Control, Node, apcLoad);
+        Continue;
       end;
+
+      iProperty := GetPropertyIndex(Control, Attribute, RequiredProperties);
+      if iProperty > -1 then
+      begin
+        SetPropValue(Control, Attribute, VarToStr(Node.AttributeNodes[iAttribute].NodeValue));
+        Continue;
+      end;
+
+      iProperty := GetPropertyIndex(Control, Attribute, OptionalProperties);
+      if iProperty > -1 then
+        SetPropValue(Control, Attribute, VarToStr(Node.AttributeNodes[iAttribute].NodeValue));
     end;
   end;
 
