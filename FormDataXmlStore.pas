@@ -1,15 +1,22 @@
 unit FormDataXmlStore;
 
-{ A simple form data store helper to xml for Delphi.
-  Copyright (C) 2018 by Alexey Kolesnikov.
-  Email: ak@blu-disc.net
-  Website: https://blu-disc.net
+interface
+
+{$region 'Description'} {
+
+A simple form data to xml store helper for Delphi.
+Copyright (C) 2018 by Alexey Kolesnikov.
+Email: ak@blu-disc.net
+Website: https://blu-disc.net
 
 You can use this software for whatever you want.
+
 
 Usage:
 
   Create, add property names for storing, call Save/Load.
+  Optionally you can make some actions before restoring (OnLoad event called after xml loaded, before restoring)
+  and before saving (OnSave event called after xml created, before saving). Both methods give you the form root node.
 
   Property name can be:
     - Simple property name, like ItemIndex, Checked, Value, Text, etc.
@@ -21,9 +28,12 @@ Usage:
     - Custom group: stores the property by calling the specified procedure (TFormDataXmlStorePropProc).
     - Optional group: stores this property only if nothing has been found in the Required and Custom lists for this control.
 
+
 Example of usage:
 
   XmlStore := TFormDataXmlStore.Create(aForm);
+  XmlStore.OnLoad := XmlStore_OnLoad; // optional
+  XmlStore.OnSave := XmlStore_OnSave; // optional
   XmlStore.AddPropertyRequired('Checked');   // will store Checked for all controls that have it
   XmlStore.AddPropertyRequired('ItemIndex'); // will store ItemIndex for all controls that have it
   XmlStore.AddPropertyRequired('cmbProjectLangCode|Text'); // will store Text for cmbProjectLangCode
@@ -48,10 +58,27 @@ Example of usage:
       TMemo(Control).Lines.Text := VarToStr(Node.ChildNodes['Lines'].NodeValue);
   end;
 
-21-Aug-2018 initial release
-23-Aug-2018 changed load order to Custom, Required, Optional }
+  ...
 
-interface
+  procedure TfrmWizard.XmlStore_OnLoad(RootNode: IXMLNode);
+  begin
+    if RootNode.HasAttribute('ProjectFolder') then
+      ProjectFolder := RootNode.Attributes['ProjectFolder'];
+  end;
+
+  procedure TfrmWizard.XmlStore_OnSave(RootNode: IXMLNode);
+  begin
+    RootNode.Attributes['ProjectFolder'] := ProjectFolder;
+  end;
+
+
+Revision history:
+
+  21-Aug-2018 initial release
+  23-Aug-2018 changed load order to Custom, Required, Optional
+  29-Aug-2018 OnLoad/OnSave added, refactoring
+
+} {$endregion}
 
 uses
   SysUtils, Classes, Controls, Forms, xmldom, msxmldom, XMLIntf, XMLDoc, TypInfo;
@@ -59,7 +86,14 @@ uses
 type
   TFormDataXmlStoreCommand = (apcSave, apcLoad);
 
-  TFormDataXmlStorePropProc = procedure(Control: TControl; Node: IXMLNode; XmlStoreCommand: TFormDataXmlStoreCommand);
+  TFormDataXmlStorePropProc = procedure(Control: TControl; Node: IXMLNode; XmlStoreCommand: TFormDataXmlStoreCommand) of object;
+
+  TFormDataXmlStoreNotify = procedure(RootNode: IXMLNode) of object;
+
+  TFormDataXmlStoreCustomData = class
+    StoreProc: TFormDataXmlStorePropProc;
+    constructor Create(aStoreProc: TFormDataXmlStorePropProc);
+  end;
 
   TFormDataXmlStore = class
   private
@@ -67,6 +101,8 @@ type
     RequiredProperties, OptionalProperties, CustomProperties: TStringList;
     xml: TXMLDocument;
     FSaveVisible: Boolean;
+    FOnLoad: TFormDataXmlStoreNotify;
+    FOnSave: TFormDataXmlStoreNotify;
 
     function AddNode(Control: TControl; ParentNode: IXMLNode): IXMLNode;
     procedure ClearXml;
@@ -79,6 +115,8 @@ type
     function SavePropertyCustom(Control: TControl; iProperty: Integer; node: IXMLNode): Boolean;
   public
     property SaveVisible: Boolean read FSaveVisible write FSaveVisible;
+    property OnLoad: TFormDataXmlStoreNotify read FOnLoad write FOnLoad;
+    property OnSave: TFormDataXmlStoreNotify read FOnSave write FOnSave;
 
     constructor Create(aForm: TForm);
     destructor Destroy; override;
@@ -89,6 +127,7 @@ type
     procedure Load(FileName: String);
     procedure Save(FileName: String);
   end;
+
 
 implementation
 
@@ -108,7 +147,7 @@ end;
 
 procedure TFormDataXmlStore.AddPropertyCustom(aName: String; StoreProc: TFormDataXmlStorePropProc);
 begin
-  CustomProperties.AddObject(aName, @StoreProc);
+  CustomProperties.AddObject(aName, TFormDataXmlStoreCustomData.Create(StoreProc));
 end;
 
 procedure TFormDataXmlStore.AddPropertyOptional(aName: String);
@@ -135,6 +174,8 @@ begin
 
   FSaveVisible := False;
   Form := aForm;
+  OnLoad := nil;
+  OnSave := nil;
 
   xml := TXMLDocument.Create(aForm);
   xml.DOMVendor := GetDOMVendor(SMSXML);
@@ -144,7 +185,7 @@ begin
 
   RequiredProperties := TStringList.Create;
   OptionalProperties := TStringList.Create;
-  CustomProperties := TStringList.Create;
+  CustomProperties := TStringList.Create(True);
 end;
 
 destructor TFormDataXmlStore.Destroy;
@@ -263,6 +304,8 @@ end;
 procedure TFormDataXmlStore.Load(FileName: String);
 begin
   xml.LoadFromFile(FileName);
+  if Assigned(OnLoad) then
+    OnLoad(xml.ChildNodes['root'].ChildNodes['node']);
   LoadControl(Form, xml.ChildNodes['root'].ChildNodes['node']);
   ClearXml;
 end;
@@ -272,31 +315,23 @@ var
   iAttribute, iNode, iProperty: Integer;
   childNode: IXMLNode;
   childControl: TControl;
-  Attribute: string;
+  PropertyName: string;
 begin
   for iAttribute := 0 to Node.AttributeNodes.Count - 1 do
   begin
-    Attribute := Node.AttributeNodes[iAttribute].NodeName;
+    PropertyName := Node.AttributeNodes[iAttribute].NodeName;
 
-    if (Attribute <> 'Name') and IsPublishedProp(Control, Attribute) then
+    if (PropertyName <> 'Name') and IsPublishedProp(Control, PropertyName) then
     begin
-      iProperty := GetPropertyIndex(Control, Attribute, CustomProperties);
+      iProperty := GetPropertyIndex(Control, PropertyName, CustomProperties);
       if iProperty > -1 then
-      begin
-        TFormDataXmlStorePropProc(CustomProperties.Objects[iProperty])(Control, Node, apcLoad);
-        Continue;
-      end;
-
-      iProperty := GetPropertyIndex(Control, Attribute, RequiredProperties);
-      if iProperty > -1 then
-      begin
-        SetPropValue(Control, Attribute, VarToStr(Node.AttributeNodes[iAttribute].NodeValue));
-        Continue;
-      end;
-
-      iProperty := GetPropertyIndex(Control, Attribute, OptionalProperties);
-      if iProperty > -1 then
-        SetPropValue(Control, Attribute, VarToStr(Node.AttributeNodes[iAttribute].NodeValue));
+        TFormDataXmlStoreCustomData(CustomProperties.Objects[iProperty]).StoreProc(Control, Node, apcLoad)
+      else
+      if GetPropertyIndex(Control, PropertyName, RequiredProperties) > -1 then
+        SetPropValue(Control, PropertyName, VarToStr(Node.AttributeNodes[iAttribute].NodeValue))
+      else
+      if GetPropertyIndex(Control, PropertyName, OptionalProperties) > -1 then
+        SetPropValue(Control, PropertyName, VarToStr(Node.AttributeNodes[iAttribute].NodeValue));
     end;
   end;
 
@@ -353,6 +388,13 @@ begin
   else
     node := nil;
 
+  if (Control = Form) and Assigned(OnSave) then
+  begin
+    if not Assigned(node) then
+      node := AddNode(Control, ParentNode);
+    OnSave(node);
+  end;
+
   if (Control is TWinControl) and (TWinControl(Control).ControlCount > 0) then
   begin
     if not Assigned(node) then
@@ -389,9 +431,18 @@ begin
   if IsPublishedProp(Control, aProperty) then
   begin
     node.Attributes[aProperty] := 'custom';
-    TFormDataXmlStorePropProc(CustomProperties.Objects[iProperty])(Control, node, apcSave);
+    TFormDataXmlStoreCustomData(CustomProperties.Objects[iProperty]).StoreProc(Control, node, apcSave);
     Result := True;
   end;
+end;
+
+
+{ TFormDataXmlStoreCustomData }
+
+constructor TFormDataXmlStoreCustomData.Create(aStoreProc: TFormDataXmlStorePropProc);
+begin
+  inherited Create;
+  StoreProc := aStoreProc;
 end;
 
 end.

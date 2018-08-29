@@ -1,4 +1,4 @@
-A simple form data store helper to xml for Delphi.
+A simple form data to xml store helper for Delphi.
 Copyright (C) 2018 by Alexey Kolesnikov.
 Email: ak@blu-disc.net
 Website: https://blu-disc.net
@@ -9,6 +9,8 @@ You can use this software for whatever you want.
 Usage:
 
   Create, add property names for storing, call Save/Load.
+  Optionally you can make some actions before restoring (OnLoad event called after xml loaded, before restoring)
+  and before saving (OnSave event called after xml created, before saving). Both methods give you the form root node.
 
   Property name can be:
     - Simple property name, like ItemIndex, Checked, Value, Text, etc.
@@ -24,6 +26,8 @@ Usage:
 Example of usage:
 
   XmlStore := TFormDataXmlStore.Create(aForm);
+  XmlStore.OnLoad := XmlStore_OnLoad; // optional
+  XmlStore.OnSave := XmlStore_OnSave; // optional
   XmlStore.AddPropertyRequired('Checked');   // will store Checked for all controls that have it
   XmlStore.AddPropertyRequired('ItemIndex'); // will store ItemIndex for all controls that have it
   XmlStore.AddPropertyRequired('cmbProjectLangCode|Text'); // will store Text for cmbProjectLangCode
@@ -46,4 +50,17 @@ Example of usage:
       Node.AddChild('Lines').NodeValue := TMemo(Control).Lines.Text
     else
       TMemo(Control).Lines.Text := VarToStr(Node.ChildNodes['Lines'].NodeValue);
+  end;
+
+  ...
+
+  procedure TfrmWizard.XmlStore_OnLoad(RootNode: IXMLNode);
+  begin
+    if RootNode.HasAttribute('ProjectFolder') then
+      ProjectFolder := RootNode.Attributes['ProjectFolder'];
+  end;
+
+  procedure TfrmWizard.XmlStore_OnSave(RootNode: IXMLNode);
+  begin
+    RootNode.Attributes['ProjectFolder'] := ProjectFolder;
   end;
