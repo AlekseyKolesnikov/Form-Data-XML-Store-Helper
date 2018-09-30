@@ -77,6 +77,7 @@ Revision history:
   21-Aug-2018 initial release
   23-Aug-2018 changed load order to Custom, Required, Optional
   29-Aug-2018 OnLoad/OnSave added, refactoring
+  30-Sep-2018 GetNode added - returns node using array Path (useful to patch old xmls in onLoad)
 
 } {$endregion}
 
@@ -124,6 +125,7 @@ type
     procedure AddPropertyCustom(aName: String; StoreProc: TFormDataXmlStorePropProc);
     procedure AddPropertyOptional(aName: String);
     procedure AddPropertyRequired(aName: String);
+    function GetNode(RootNode: IXMLNode; Path: array of String; Index: Integer = 0): IXMLNode;
     procedure Load(FileName: String);
     procedure Save(FileName: String);
   end;
@@ -196,6 +198,26 @@ begin
   CustomProperties.Free;
 
   inherited;
+end;
+
+function TFormDataXmlStore.GetNode(RootNode: IXMLNode; Path: array of String; Index: Integer = 0): IXMLNode;
+var
+  i: Integer;
+begin
+  Result := nil;
+
+  if Index >= Length(Path) then
+    Exit;
+
+  for i := 0 to RootNode.ChildNodes.Count - 1 do
+    if RootNode.ChildNodes[i].Attributes['Name'] = Path[Index] then
+    begin
+      if Index < Length(Path) - 1 then
+        Result := GetNode(RootNode.ChildNodes[i], Path, Index + 1)
+      else
+        Result := RootNode.ChildNodes[i];
+      Break;
+    end;
 end;
 
 function TFormDataXmlStore.GetPropertyIndex(Control: TControl; aProperty: String; List: TStringList): Integer;
