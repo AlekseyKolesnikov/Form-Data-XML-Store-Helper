@@ -107,8 +107,9 @@ type
 
     function AddNode(Control: TControl; ParentNode: IXMLNode): IXMLNode;
     procedure ClearXml;
-    function GetPropertyIndex(Control: TControl; aProperty: String; List: TStringList): Integer;
-    function GetPropertyName(Control: TControl; aProperty: String): String;
+    function FindNode(root: IXMLNode; NodeName: String): IXMLNode;
+    function GetPropertyIndex(Control: TControl; const aProperty: String; List: TStringList): Integer;
+    function GetPropertyName(Control: TControl; const aProperty: String): String;
     function HasAnyProperty(Control: TControl): Boolean;
     procedure LoadControl(Control: TControl; Node: IXMLNode);
     procedure SaveControl(Control: TControl; ParentNode: IXMLNode);
@@ -122,12 +123,14 @@ type
     constructor Create(aForm: TForm);
     destructor Destroy; override;
 
-    procedure AddPropertyCustom(aName: String; StoreProc: TFormDataXmlStorePropProc);
-    procedure AddPropertyOptional(aName: String);
-    procedure AddPropertyRequired(aName: String);
+    procedure AddPropertyCustom(const aName: String; StoreProc: TFormDataXmlStorePropProc);
+    procedure AddPropertyOptional(const aName: String);
+    procedure AddPropertyRequired(const aName: String);
     function GetNode(RootNode: IXMLNode; Path: array of String; Index: Integer = 0): IXMLNode;
-    procedure Load(FileName: String);
-    procedure Save(FileName: String);
+    procedure Load(const FileName: String);
+    procedure LoadArray(const FileName: String; Controls: array of TWinControl);
+    procedure Save(const FileName: String);
+    procedure SaveArray(const FileName: String; Controls: array of TWinControl);
   end;
 
 
@@ -147,17 +150,17 @@ begin
     Result.Attributes['Visible'] := Control.Visible;
 end;
 
-procedure TFormDataXmlStore.AddPropertyCustom(aName: String; StoreProc: TFormDataXmlStorePropProc);
+procedure TFormDataXmlStore.AddPropertyCustom(const aName: String; StoreProc: TFormDataXmlStorePropProc);
 begin
   CustomProperties.AddObject(aName, TFormDataXmlStoreCustomData.Create(StoreProc));
 end;
 
-procedure TFormDataXmlStore.AddPropertyOptional(aName: String);
+procedure TFormDataXmlStore.AddPropertyOptional(const aName: String);
 begin
   OptionalProperties.Add(aName);
 end;
 
-procedure TFormDataXmlStore.AddPropertyRequired(aName: String);
+procedure TFormDataXmlStore.AddPropertyRequired(const aName: String);
 begin
   RequiredProperties.Add(aName);
 end;
@@ -200,6 +203,20 @@ begin
   inherited;
 end;
 
+function TFormDataXmlStore.FindNode(root: IXMLNode; NodeName: String): IXMLNode;
+var
+  i: Integer;
+begin
+  Result := nil;
+
+  for i := 0 to root.ChildNodes.Count - 1 do
+    if (root.ChildNodes[i].NodeType = ntElement) and (root.ChildNodes[i].Attributes['Name'] = NodeName) then
+    begin
+      Result := root.ChildNodes[i];
+      Break;
+    end;
+end;
+
 function TFormDataXmlStore.GetNode(RootNode: IXMLNode; Path: array of String; Index: Integer = 0): IXMLNode;
 var
   i: Integer;
@@ -220,7 +237,7 @@ begin
     end;
 end;
 
-function TFormDataXmlStore.GetPropertyIndex(Control: TControl; aProperty: String; List: TStringList): Integer;
+function TFormDataXmlStore.GetPropertyIndex(Control: TControl; const aProperty: String; List: TStringList): Integer;
 var
   iProperty, i: Integer;
   ListProperty: string;
@@ -256,7 +273,7 @@ begin
   end;
 end;
 
-function TFormDataXmlStore.GetPropertyName(Control: TControl; aProperty: String): String;
+function TFormDataXmlStore.GetPropertyName(Control: TControl; const aProperty: String): String;
 var
   i: Integer;
 begin
@@ -323,12 +340,32 @@ begin
   end;
 end;
 
-procedure TFormDataXmlStore.Load(FileName: String);
+procedure TFormDataXmlStore.Load(const FileName: String);
 begin
   xml.LoadFromFile(FileName);
   if Assigned(OnLoad) then
     OnLoad(xml.ChildNodes['root'].ChildNodes['node']);
   LoadControl(Form, xml.ChildNodes['root'].ChildNodes['node']);
+  ClearXml;
+end;
+
+procedure TFormDataXmlStore.LoadArray(const FileName: String; Controls: array of TWinControl);
+var
+  i: Integer;
+  node: IXMLNode;
+begin
+  xml.LoadFromFile(FileName);
+
+  if Assigned(OnLoad) then
+    OnLoad(xml.ChildNodes['root']);
+
+  for i := 0 to Length(Controls) - 1 do
+  begin
+    node := FindNode(xml.ChildNodes['root'], Controls[i].Name);
+    if node <> nil then
+      LoadControl(Controls[i], node);
+  end;
+
   ClearXml;
 end;
 
@@ -373,9 +410,19 @@ begin
     end;
 end;
 
-procedure TFormDataXmlStore.Save(FileName: String);
+procedure TFormDataXmlStore.Save(const FileName: String);
 begin
   SaveControl(Form, xml.ChildNodes['root']);
+  xml.SaveToFile(FileName);
+  ClearXml;
+end;
+
+procedure TFormDataXmlStore.SaveArray(const FileName: String; Controls: array of TWinControl);
+var
+  i: Integer;
+begin
+  for i := 0 to Length(Controls) - 1 do
+    SaveControl(Controls[i], xml.ChildNodes['root']);
   xml.SaveToFile(FileName);
   ClearXml;
 end;
