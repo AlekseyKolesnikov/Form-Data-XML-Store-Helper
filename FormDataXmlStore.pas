@@ -134,10 +134,42 @@ type
   end;
 
 
+function FindNodeByName(Node: IXMLNode; Name: String): IXMLNode;
+function FindNodeByNameChain(Node: IXMLNode; Names: array of String): IXMLNode;
+
+
 implementation
 
 uses
   Variants;
+
+function FindNodeByName(Node: IXMLNode; Name: String): IXMLNode;
+var
+  i: Integer;
+begin
+  Result := nil;
+
+  for i := 0 to Node.ChildNodes.Count - 1 do
+    if (Node.ChildNodes[i].NodeType = ntElement) and (Node.ChildNodes[i].Attributes['Name'] = Name) then
+    begin
+      Result := Node.ChildNodes[i];
+      Break;
+    end;
+end;
+
+function FindNodeByNameChain(Node: IXMLNode; Names: array of String): IXMLNode;
+var
+  i: Integer;
+begin
+  Result := Node;
+
+  for i := 0 to Length(Names) - 1 do
+  begin
+    Result := FindNodeByName(Result, Names[i]);
+    if not Assigned(Result) then
+      Break;
+  end;
+end;
 
 
 { TXmlStore }
