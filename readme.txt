@@ -1,5 +1,5 @@
 A simple form data to xml store helper for Delphi.
-Copyright (C) 2018 by Alexey Kolesnikov.
+Copyright (C) 2018-2024 by Alexey Kolesnikov.
 Email: ak@blu-disc.net
 Website: https://blu-disc.net
 
