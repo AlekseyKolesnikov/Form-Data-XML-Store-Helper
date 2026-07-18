@@ -135,13 +135,14 @@ type
 
 
 function FindNodeByName(Node: IXMLNode; Name: String): IXMLNode;
-function FindNodeByNameChain(Node: IXMLNode; Names: array of String): IXMLNode;
+function FindNodeByNameChain(Node: IXMLNode; Names: array of String): IXMLNode; overload;
+function FindNodeByNameChain(Node: IXMLNode; NameChain: String): IXMLNode; overload;
 
 
 implementation
 
 uses
-  Variants;
+  Variants, StrUtils;
 
 function FindNodeByName(Node: IXMLNode; Name: String): IXMLNode;
 var
@@ -157,7 +158,7 @@ begin
     end;
 end;
 
-function FindNodeByNameChain(Node: IXMLNode; Names: array of String): IXMLNode;
+function FindNodeByNameChain(Node: IXMLNode; Names: array of String): IXMLNode; overload;
 var
   i: Integer;
 begin
@@ -169,6 +170,11 @@ begin
     if not Assigned(Result) then
       Break;
   end;
+end;
+
+function FindNodeByNameChain(Node: IXMLNode; NameChain: String): IXMLNode; overload;
+begin
+  Result := FindNodeByNameChain(Node, SplitString(NameChain, '.'));
 end;
 
 
